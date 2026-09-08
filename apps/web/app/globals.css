@@ -1,0 +1,140 @@
+@import "tailwindcss";
+
+/*
+ * Reactively design tokens.
+ *
+ * Tokens are CSS variables so that light/dark can switch without re-rendering React, and
+ * so the editor chrome can eventually be themed independently of the device canvas — the
+ * canvas renders the *user's* app, which must never inherit our colours.
+ *
+ * Theme resolution order:
+ *   1. system preference
+ *   2. explicit `data-theme` on <html>, which wins over the media query
+ */
+
+:root {
+  --reactively-background: #ffffff;
+  --reactively-surface: #f7f8fa;
+  --reactively-surface-muted: #eef0f4;
+  --reactively-border: #dfe3ea;
+  --reactively-foreground: #0b0d12;
+  --reactively-foreground-muted: #5b6474;
+  --reactively-primary: #3b5bfd;
+  --reactively-primary-foreground: #ffffff;
+  --reactively-primary-soft: #eef1ff;
+  --reactively-danger: #d92d20;
+  --reactively-editor-workspace: #f3f5f9;
+  --reactively-editor-canvas: #f7f9fc;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --reactively-background: #0b0d12;
+    --reactively-surface: #14171f;
+    --reactively-surface-muted: #1c202a;
+    --reactively-border: #272c38;
+    --reactively-foreground: #f4f6fa;
+    --reactively-foreground-muted: #98a1b3;
+    --reactively-primary: #6d86ff;
+    --reactively-primary-foreground: #0b0d12;
+    --reactively-primary-soft: #202b54;
+    --reactively-danger: #f97066;
+    --reactively-editor-workspace: #10131a;
+    --reactively-editor-canvas: #171b24;
+  }
+}
+
+:root[data-theme="light"] {
+  --reactively-background: #ffffff;
+  --reactively-surface: #f7f8fa;
+  --reactively-surface-muted: #eef0f4;
+  --reactively-border: #dfe3ea;
+  --reactively-foreground: #0b0d12;
+  --reactively-foreground-muted: #5b6474;
+  --reactively-primary: #3b5bfd;
+  --reactively-primary-foreground: #ffffff;
+  --reactively-primary-soft: #eef1ff;
+  --reactively-danger: #d92d20;
+  --reactively-editor-workspace: #f3f5f9;
+  --reactively-editor-canvas: #f7f9fc;
+}
+
+:root[data-theme="dark"] {
+  --reactively-background: #0b0d12;
+  --reactively-surface: #14171f;
+  --reactively-surface-muted: #1c202a;
+  --reactively-border: #272c38;
+  --reactively-foreground: #f4f6fa;
+  --reactively-foreground-muted: #98a1b3;
+  --reactively-primary: #6d86ff;
+  --reactively-primary-foreground: #0b0d12;
+  --reactively-primary-soft: #202b54;
+  --reactively-danger: #f97066;
+  --reactively-editor-workspace: #10131a;
+  --reactively-editor-canvas: #171b24;
+}
+
+/* The visual editor mirrors a light design-tool workspace independently of OS theme. */
+.editor-theme {
+  color-scheme: light;
+  --reactively-background: #ffffff;
+  --reactively-surface: #ffffff;
+  --reactively-surface-muted: #f5f7fb;
+  --reactively-border: #dde3ed;
+  --reactively-foreground: #11162a;
+  --reactively-foreground-muted: #62708a;
+  --reactively-primary: #5367f6;
+  --reactively-primary-foreground: #ffffff;
+  --reactively-primary-soft: #edf0ff;
+  --reactively-danger: #d92d20;
+  --reactively-editor-workspace: #f1f4f8;
+  --reactively-editor-canvas: #f7f9fc;
+}
+
+/*
+ * `@theme inline` exposes the tokens as Tailwind utilities (bg-surface, text-foreground-
+ * muted, border-border, ...) while keeping the underlying value a live CSS variable, so a
+ * theme switch does not require regenerating any classes.
+ */
+@theme inline {
+  --color-background: var(--reactively-background);
+  --color-surface: var(--reactively-surface);
+  --color-surface-muted: var(--reactively-surface-muted);
+  --color-border: var(--reactively-border);
+  --color-foreground: var(--reactively-foreground);
+  --color-foreground-muted: var(--reactively-foreground-muted);
+  --color-primary: var(--reactively-primary);
+  --color-primary-foreground: var(--reactively-primary-foreground);
+  --color-primary-soft: var(--reactively-primary-soft);
+  --color-danger: var(--reactively-danger);
+  --color-editor-workspace: var(--reactively-editor-workspace);
+  --color-editor-canvas: var(--reactively-editor-canvas);
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+}

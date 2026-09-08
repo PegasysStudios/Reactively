@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.next/
+.turbo/
+coverage/
+out/
+build/
+playwright-report/
+test-results/
+.corepack-bin/
+pnpm-lock.yaml
+*.tsbuildinfo

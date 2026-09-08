@@ -1,0 +1,41 @@
+# Reactively workspace layout.
+#
+# `templates/` is intentionally NOT a workspace member. `templates/expo-app` is a
+# versioned, known-good Expo project that @reactively/generator materializes into a
+# customer app. It is data/input for the generator, not a build target of this
+# monorepo, and installing React Native into the workspace would pollute the editor
+# dependency graph.
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "tooling/*"
+
+# Packages allowed to run install lifecycle scripts (pnpm >= 10 blocks these by default).
+onlyBuiltDependencies:
+  - "@tailwindcss/oxide"
+  - esbuild
+  - sharp
+  - unrs-resolver
+
+# pnpm's supply-chain policy quarantines releases newer than its minimum age threshold.
+# These are pinned versions we have deliberately chosen; pnpm appends to this list itself
+# when a new dependency is added, so review additions rather than assuming they are noise.
+minimumReleaseAgeExclude:
+  - "@supabase/auth-js@2.116.0"
+  - "@supabase/functions-js@2.116.0"
+  - "@supabase/postgrest-js@2.116.0"
+  - "@supabase/realtime-js@2.116.0"
+  - "@supabase/storage-js@2.116.0"
+  - "@supabase/supabase-js@2.116.0"
+  - "@typescript-eslint/eslint-plugin@8.70.0"
+  - "@typescript-eslint/parser@8.70.0"
+  - "@typescript-eslint/project-service@8.70.0"
+  - "@typescript-eslint/scope-manager@8.70.0"
+  - "@typescript-eslint/tsconfig-utils@8.70.0"
+  - "@typescript-eslint/type-utils@8.70.0"
+  - "@typescript-eslint/types@8.70.0"
+  - "@typescript-eslint/typescript-estree@8.70.0"
+  - "@typescript-eslint/utils@8.70.0"
+  - "@typescript-eslint/visitor-keys@8.70.0"
+  - lucide-react@1.43.0
+  - typescript-eslint@8.70.0

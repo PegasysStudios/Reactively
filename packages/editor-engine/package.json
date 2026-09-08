@@ -1,0 +1,37 @@
+{
+  "name": "@reactively/editor-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Framework-independent editor state contracts and project mutation operations.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "clean": "rimraf dist .turbo"
+  },
+  "dependencies": {
+    "@reactively/history": "workspace:*",
+    "@reactively/project-schema": "workspace:*",
+    "@reactively/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@reactively/typescript-config": "workspace:*",
+    "rimraf": "6.0.1",
+    "typescript": "5.9.3",
+    "vitest": "5.0.0"
+  }
+}

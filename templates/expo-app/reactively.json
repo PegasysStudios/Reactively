@@ -1,0 +1,15 @@
+{
+  "$comment": "Reactively ownership and version markers for a generated application. The generator reads this file to decide what it may overwrite and which runtime the app was built against.",
+
+  "reactivelyRuntimeVersion": "0.1.0",
+  "expoSdkVersion": "57",
+  "templateVersion": "1",
+  "projectSchemaVersion": 1,
+
+  "ownership": {
+    "$comment": "Reactively regenerates everything under `generated`. It must never overwrite `user` paths without an explicit action from the developer.",
+    "generated": ["app", "src/generated"],
+    "user": ["src/custom"],
+    "shared": ["src/runtime"]
+  }
+}

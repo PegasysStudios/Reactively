@@ -24,7 +24,9 @@ describe("editor layout rendering", () => {
     render(
       <EditorComponentRenderer
         node={buttonWithStyle({ width: points(200), height: points(56) })}
+        nodes={{}}
         isSelected={false}
+        selectedNodeId={null}
         onSelect={vi.fn()}
       />,
     );
@@ -43,9 +45,14 @@ describe("editor layout rendering", () => {
       width: points(200),
     });
 
-    render(
-      <EditorCanvas projectId="project_fixture" screenName="Home" components={[node]} />,
-    );
+    const project = createMinimalProjectFixture();
+    project.nodes["node_cta"] = node;
+    project.nodes["node_root"] = {
+      ...project.nodes["node_root"]!,
+      children: [node.id],
+    };
+
+    render(<EditorCanvas project={project} screenId={project.initialScreenId} screenName="Home" />);
 
     expect(screen.getByRole("button", { name: "Select Primary Action" })).toHaveStyle({
       position: "absolute",
@@ -59,7 +66,9 @@ describe("editor layout rendering", () => {
     render(
       <EditorComponentRenderer
         node={buttonWithStyle({ left: points(20), top: points(30), width: points(120) })}
+        nodes={{}}
         isSelected
+        selectedNodeId="node_cta"
         onSelect={vi.fn()}
       />,
     );
@@ -73,7 +82,9 @@ describe("editor layout rendering", () => {
     render(
       <EditorComponentRenderer
         node={buttonWithStyle({ margin: { top: 20, right: 8, bottom: 0, left: 8 } })}
+        nodes={{}}
         isSelected={false}
+        selectedNodeId={null}
         onSelect={vi.fn()}
       />,
     );
@@ -90,7 +101,9 @@ describe("editor layout rendering", () => {
     render(
       <EditorComponentRenderer
         node={buttonWithStyle({ padding: { top: 12, right: 24, bottom: 12, left: 24 } })}
+        nodes={{}}
         isSelected={false}
+        selectedNodeId={null}
         onSelect={vi.fn()}
       />,
     );
@@ -109,7 +122,9 @@ describe("editor layout rendering", () => {
     render(
       <EditorComponentRenderer
         node={buttonWithStyle({ alignSelf: "center", width: points(200) })}
+        nodes={{}}
         isSelected={false}
+        selectedNodeId={null}
         onSelect={vi.fn()}
       />,
     );
@@ -124,7 +139,9 @@ describe("editor layout rendering", () => {
     render(
       <EditorComponentRenderer
         node={buttonWithStyle({ flexGrow: 1, flexShrink: 0, width: points(200) })}
+        nodes={{}}
         isSelected={false}
+        selectedNodeId={null}
         onSelect={vi.fn()}
       />,
     );

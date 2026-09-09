@@ -27,6 +27,9 @@ export function useLoadProject(projectId: string): ProjectLoadState {
     void loadLocalProject(projectId)
       .then((loadedProject) => {
         if (isActive) {
+          if (loadedProject) {
+            useEditorStore.getState().openScreen(loadedProject.initialScreenId);
+          }
           setStatus(loadedProject ? "ready" : "not-found");
         }
       })

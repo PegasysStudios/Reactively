@@ -7,9 +7,16 @@ import type { NodeId } from "@reactively/project-schema";
  */
 export type EditorErrorCode =
   | "invalid-project-name"
+  | "screen-not-found"
   | "node-not-found"
+  | "node-outside-screen"
   | "parent-not-found"
+  | "parent-outside-screen"
+  | "invalid-hierarchy"
+  | "duplicate-node-id"
   | "unknown-component-type"
+  | "invalid-component-style"
+  | "unsupported-container-layout"
   | "invalid-nesting"
   | "cannot-delete-screen-root"
   | "cannot-reparent-screen-root"

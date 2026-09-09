@@ -56,6 +56,8 @@ export interface ComponentCapabilities {
   /** When present, only these child types may be placed inside the component. */
   readonly allowedChildTypes?: readonly string[];
   readonly supportsAbsolutePosition: boolean;
+  /** The component lays out its direct children with React Native Flexbox semantics. */
+  readonly supportsContainerLayout: boolean;
   readonly supportsFlexItem: boolean;
   readonly supportsTextStyle: boolean;
   /** Events the component can raise, e.g. `onPress`. */

@@ -103,7 +103,7 @@ export const ComponentStyleSchema = z.object({
   justifyContent: JustifyContentSchema.optional(),
   alignItems: AlignItemsSchema.optional(),
   flexWrap: FlexWrapSchema.optional(),
-  gap: z.number().optional(),
+  gap: z.number().finite().nonnegative().optional(),
   rowGap: z.number().optional(),
   columnGap: z.number().optional(),
 

@@ -1,14 +1,22 @@
+import { ComponentStyleSchema } from "@reactively/project-schema";
 import type {
   ComponentNode,
   ComponentStyle,
   NodeId,
   ReactivelyProject,
+  ScreenId,
 } from "@reactively/project-schema";
 import { err, ok, type Result } from "@reactively/shared";
 
 import type { EditorCommandContext } from "./context.js";
 import { editorError, type EditorError } from "./errors.js";
-import { collectSubtreeIds, isAncestorOf, isScreenRoot } from "./tree.js";
+import {
+  collectSubtreeIds,
+  isAncestorOf,
+  isNodeInScreenTree,
+  isScreenRoot,
+  isScreenTreeConsistent,
+} from "./tree.js";
 
 /**
  * Pure project mutations.
@@ -63,6 +71,7 @@ function insertChild(children: readonly NodeId[], childId: NodeId, index?: numbe
 }
 
 export interface AddNodeParams {
+  readonly screenId: ScreenId;
   readonly parentId: NodeId;
   readonly type: string;
   /** Position among the parent's children. Appended when omitted. */
@@ -82,9 +91,24 @@ export function addNode(
   context: EditorCommandContext,
   params: AddNodeParams,
 ): MutationResult {
+  const screen = project.screens[params.screenId];
+  if (!screen) {
+    return err(editorError("screen-not-found", `Screen "${params.screenId}" does not exist.`));
+  }
+
   const parent = project.nodes[params.parentId];
   if (!parent) {
     return err(editorError("parent-not-found", `Parent node "${params.parentId}" does not exist.`));
+  }
+
+  if (!isNodeInScreenTree(project, screen.id, parent.id)) {
+    return err(
+      editorError(
+        "parent-outside-screen",
+        `Parent node "${params.parentId}" does not belong to screen "${screen.name}".`,
+        params.parentId,
+      ),
+    );
   }
 
   const defaults = context.defaultsFor(params.type);
@@ -103,6 +127,13 @@ export function addNode(
   }
 
   const nodeId = context.createId();
+  const idIsAlreadyReferenced = Object.values(project.nodes).some((candidate) =>
+    candidate.children.includes(nodeId),
+  );
+  if (project.nodes[nodeId] || idIsAlreadyReferenced) {
+    return err(editorError("duplicate-node-id", `Node ID "${nodeId}" already exists.`, nodeId));
+  }
+
   const node: ComponentNode = {
     id: nodeId,
     type: params.type,
@@ -175,19 +206,28 @@ export function deleteNode(
   return ok(replaceNodes(project, nodes, context));
 }
 
-export interface ReparentNodeParams {
+export interface ReparentComponentParams {
+  readonly screenId: ScreenId;
   readonly nodeId: NodeId;
   readonly newParentId: NodeId;
-  /** Position among the new parent's children. Appended when omitted. */
-  readonly index?: number;
 }
 
-/** Moves a node to a different parent, or to a different position under the same parent. */
-export function reparentNode(
+/**
+ * Moves a component and its intact subtree to the end of another parent's children.
+ *
+ * The screen ID is explicit so a caller cannot accidentally move hierarchy between
+ * screens. Selecting the current parent is an identity-preserving no-op.
+ */
+export function reparentComponent(
   project: ReactivelyProject,
   context: EditorCommandContext,
-  params: ReparentNodeParams,
+  params: ReparentComponentParams,
 ): MutationResult {
+  const screen = project.screens[params.screenId];
+  if (!screen) {
+    return err(editorError("screen-not-found", `Screen "${params.screenId}" does not exist.`));
+  }
+
   const node = project.nodes[params.nodeId];
   if (!node) {
     return err(editorError("node-not-found", `Node "${params.nodeId}" does not exist.`));
@@ -200,12 +240,70 @@ export function reparentNode(
     );
   }
 
-  if (isScreenRoot(project, params.nodeId)) {
+  if (!isScreenTreeConsistent(project, screen.id)) {
+    return err(
+      editorError(
+        "invalid-hierarchy",
+        `Screen "${screen.name}" has an inconsistent component hierarchy.`,
+      ),
+    );
+  }
+
+  if (!isNodeInScreenTree(project, screen.id, node.id)) {
+    return err(
+      editorError(
+        "node-outside-screen",
+        `Node "${params.nodeId}" does not belong to screen "${screen.name}".`,
+        params.nodeId,
+      ),
+    );
+  }
+
+  if (!isNodeInScreenTree(project, screen.id, newParent.id)) {
+    return err(
+      editorError(
+        "parent-outside-screen",
+        `Parent node "${params.newParentId}" does not belong to screen "${screen.name}".`,
+        params.newParentId,
+      ),
+    );
+  }
+
+  if (screen.rootNodeId === params.nodeId || isScreenRoot(project, params.nodeId)) {
     return err(
       editorError(
         "cannot-reparent-screen-root",
         "A screen's root node cannot be moved.",
         params.nodeId,
+      ),
+    );
+  }
+
+  const oldParentId = node.parentId;
+  const oldParent = oldParentId ? project.nodes[oldParentId] : undefined;
+  const oldParentReferenceCount = oldParent?.children.filter(
+    (childId) => childId === node.id,
+  ).length;
+  if (!oldParent || oldParentReferenceCount !== 1) {
+    return err(
+      editorError(
+        "invalid-hierarchy",
+        `Node "${node.id}" does not have one consistent parent reference.`,
+        node.id,
+      ),
+    );
+  }
+
+  const newParentReferenceCount = newParent.children.filter(
+    (childId) => childId === node.id,
+  ).length;
+  const expectedNewParentReferences = oldParent.id === newParent.id ? 1 : 0;
+  if (newParentReferenceCount !== expectedNewParentReferences) {
+    return err(
+      editorError(
+        "invalid-hierarchy",
+        `Parent node "${newParent.id}" has an inconsistent reference to "${node.id}".`,
+        newParent.id,
       ),
     );
   }
@@ -236,25 +334,18 @@ export function reparentNode(
     );
   }
 
-  const nodes = { ...project.nodes };
-
-  const oldParentId = node.parentId;
-  if (oldParentId) {
-    const oldParent = nodes[oldParentId];
-    if (oldParent) {
-      nodes[oldParentId] = {
-        ...oldParent,
-        children: oldParent.children.filter((childId) => childId !== params.nodeId),
-      };
-    }
+  if (oldParent.id === newParent.id) {
+    return ok(project);
   }
 
-  // Read the new parent back out of `nodes`: it may be the same object we just rewrote
-  // when a node is reordered within its current parent.
-  const targetParent = nodes[params.newParentId] ?? newParent;
+  const nodes = { ...project.nodes };
+  nodes[oldParent.id] = {
+    ...oldParent,
+    children: oldParent.children.filter((childId) => childId !== params.nodeId),
+  };
   nodes[params.newParentId] = {
-    ...targetParent,
-    children: insertChild(targetParent.children, params.nodeId, params.index),
+    ...newParent,
+    children: insertChild(newParent.children, params.nodeId),
   };
   nodes[params.nodeId] = { ...node, parentId: params.newParentId };
 
@@ -296,6 +387,13 @@ export interface UpdateNodeStyleParams {
   readonly style: ComponentStyle;
 }
 
+const CONTAINER_LAYOUT_STYLE_KEYS = [
+  "flexDirection",
+  "justifyContent",
+  "alignItems",
+  "gap",
+] as const satisfies readonly (keyof ComponentStyle)[];
+
 /** Merges style changes into a node. */
 export function updateNodeStyle(
   project: ReactivelyProject,
@@ -307,12 +405,37 @@ export function updateNodeStyle(
     return err(editorError("node-not-found", `Node "${params.nodeId}" does not exist.`));
   }
 
+  const changesContainerLayout = CONTAINER_LAYOUT_STYLE_KEYS.some((key) =>
+    Object.prototype.hasOwnProperty.call(params.style, key),
+  );
+  if (changesContainerLayout && !context.supportsContainerLayout(node.type)) {
+    return err(
+      editorError(
+        "unsupported-container-layout",
+        `"${node.type}" does not support container Flexbox styles.`,
+        node.id,
+      ),
+    );
+  }
+
+  const mergedStyle = pruneUndefined({ ...node.style, ...params.style });
+  const parsedStyle = ComponentStyleSchema.safeParse(mergedStyle);
+  if (!parsedStyle.success) {
+    return err(
+      editorError(
+        "invalid-component-style",
+        `The style update for "${node.name}" contains an invalid value.`,
+        node.id,
+      ),
+    );
+  }
+
   return ok(
     replaceNodes(
       project,
       {
         ...project.nodes,
-        [params.nodeId]: { ...node, style: pruneUndefined({ ...node.style, ...params.style }) },
+        [params.nodeId]: { ...node, style: parsedStyle.data },
       },
       context,
     ),

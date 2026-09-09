@@ -18,10 +18,15 @@ function getRootId(project: ReactivelyProject): string {
   return screen.rootNodeId;
 }
 
-function addComponent(project: ReactivelyProject, type: string): ReactivelyProject {
+function addComponent(
+  project: ReactivelyProject,
+  type: string,
+  parentId = getRootId(project),
+): ReactivelyProject {
   return unwrap(
     addNode(project, createEditorCommandContext(), {
-      parentId: getRootId(project),
+      screenId: project.initialScreenId,
+      parentId,
       type,
     }),
   );
@@ -49,6 +54,60 @@ describe("component insertion with the built-in registry", () => {
     expect(created?.style).toEqual(definition?.defaultStyle);
   });
 
+  it.each(["View", "Text", "Button"])("lets View contain %s", (type) => {
+    const project = createBlankProject();
+    const withView = addComponent(project, "View");
+    const viewId = withView.nodes[getRootId(withView)]?.children[0];
+    if (!viewId) {
+      throw new Error("Test project is missing its inserted View.");
+    }
+
+    const next = addComponent(withView, type, viewId);
+    const childId = next.nodes[viewId]?.children[0];
+
+    expect(next.nodes[viewId]?.children).toEqual([childId]);
+    expect(childId ? next.nodes[childId] : undefined).toMatchObject({
+      type,
+      parentId: viewId,
+      children: [],
+    });
+  });
+
+  it.each(["Text", "Button"])("rejects child insertion into %s", (parentType) => {
+    const project = createBlankProject();
+    const withLeaf = addComponent(project, parentType);
+    const leafId = withLeaf.nodes[getRootId(withLeaf)]?.children[0];
+    if (!leafId) {
+      throw new Error(`Test project is missing its inserted ${parentType}.`);
+    }
+
+    const result = addNode(withLeaf, createEditorCommandContext(), {
+      screenId: withLeaf.initialScreenId,
+      parentId: leafId,
+      type: "Text",
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: "invalid-nesting" } });
+  });
+
+  it("adds children to the selected View without replacing its existing siblings", () => {
+    const project = createBlankProject();
+    const withView = addComponent(project, "View");
+    const viewId = withView.nodes[getRootId(withView)]?.children[0];
+    if (!viewId) {
+      throw new Error("Test project is missing its inserted View.");
+    }
+
+    const withText = addComponent(withView, "Text", viewId);
+    const withButton = addComponent(withText, "Button", viewId);
+    const childIds = withButton.nodes[viewId]?.children ?? [];
+
+    expect(childIds).toHaveLength(2);
+    expect(withButton.nodes[childIds[0] ?? ""]?.type).toBe("Text");
+    expect(withButton.nodes[childIds[1] ?? ""]?.type).toBe("Button");
+    expect(childIds.every((id) => withButton.nodes[id]?.parentId === viewId)).toBe(true);
+  });
+
   it("creates unique stable node IDs without replacing earlier nodes", () => {
     const project = createBlankProject();
     const rootId = getRootId(project);
@@ -63,11 +122,18 @@ describe("component insertion with the built-in registry", () => {
     expect(withButton.nodes[childIds[1] ?? ""]?.type).toBe("Button");
   });
 
-  it("keeps the resulting project valid according to the canonical schema", () => {
-    const project = addComponent(
-      addComponent(addComponent(createBlankProject(), "View"), "Text"),
-      "Button",
-    );
+  it("keeps a nested project valid according to the canonical schema", () => {
+    const withOuterView = addComponent(createBlankProject(), "View");
+    const outerViewId = withOuterView.nodes[getRootId(withOuterView)]?.children[0];
+    if (!outerViewId) {
+      throw new Error("Test project is missing its outer View.");
+    }
+    const withNestedView = addComponent(withOuterView, "View", outerViewId);
+    const nestedViewId = withNestedView.nodes[outerViewId]?.children[0];
+    if (!nestedViewId) {
+      throw new Error("Test project is missing its nested View.");
+    }
+    const project = addComponent(withNestedView, "Text", nestedViewId);
 
     expect(ReactivelyProjectSchema.safeParse(project).success).toBe(true);
   });
@@ -75,6 +141,7 @@ describe("component insertion with the built-in registry", () => {
   it("rejects an unsupported component type safely", () => {
     const project = createBlankProject();
     const result = addNode(project, createEditorCommandContext(), {
+      screenId: project.initialScreenId,
       parentId: getRootId(project),
       type: "FlatList",
     });

@@ -1,6 +1,13 @@
 import "fake-indexeddb/auto";
 
-import { addNode, createProject, renameProject, updateNodeProps, updateNodeStyle } from "@reactively/editor-engine";
+import {
+  addNode,
+  createProject,
+  renameProject,
+  reparentComponent,
+  updateNodeProps,
+  updateNodeStyle,
+} from "@reactively/editor-engine";
 import {
   createMinimalProjectFixture,
   points,
@@ -70,6 +77,7 @@ describe("Dexie project persistence", () => {
 
     const project = unwrap(
       addNode(blankProject, createEditorCommandContext(), {
+        screenId: blankProject.initialScreenId,
         parentId: screen.rootNodeId,
         type: "Text",
       }),
@@ -86,6 +94,101 @@ describe("Dexie project persistence", () => {
       type: "Text",
       props: { content: "Text" },
     });
+  });
+
+  it("preserves a nested View hierarchy and stable IDs across save and load", async () => {
+    const repository = createDexieProjectPersistence(database);
+    const blankProject = createProject({ name: "Nested Components" });
+    const screen = blankProject.screens[blankProject.initialScreenId];
+    if (!screen) {
+      throw new Error("Test project is missing its initial screen.");
+    }
+
+    const withView = unwrap(
+      addNode(blankProject, createEditorCommandContext(), {
+        screenId: screen.id,
+        parentId: screen.rootNodeId,
+        type: "View",
+      }),
+    );
+    const viewId = withView.nodes[screen.rootNodeId]?.children[0];
+    if (!viewId) {
+      throw new Error("Test project is missing its inserted View.");
+    }
+    const nested = unwrap(
+      addNode(withView, createEditorCommandContext(), {
+        screenId: screen.id,
+        parentId: viewId,
+        type: "Text",
+      }),
+    );
+    const textId = nested.nodes[viewId]?.children[0];
+
+    await repository.saveLocal(nested);
+    const restored = await repository.loadLocal(nested.id);
+
+    expect(restored).toEqual(nested);
+    expect(restored?.nodes[screen.rootNodeId]?.children).toEqual([viewId]);
+    expect(restored?.nodes[viewId]?.children).toEqual([textId]);
+    expect(textId ? restored?.nodes[textId]?.parentId : undefined).toBe(viewId);
+  });
+
+  it("preserves a reparented hierarchy across save and load", async () => {
+    const repository = createDexieProjectPersistence(database);
+    const context = createEditorCommandContext();
+    const project = createMinimalProjectFixture();
+    project.nodes.view_a = {
+      id: "view_a",
+      type: "View",
+      name: "View A",
+      parentId: "node_root",
+      children: ["node_title"],
+      props: {},
+      style: {},
+      events: [],
+    };
+    project.nodes.view_b = {
+      id: "view_b",
+      type: "View",
+      name: "View B",
+      parentId: "node_root",
+      children: [],
+      props: {},
+      style: {},
+      events: [],
+    };
+    project.nodes.node_root = {
+      ...project.nodes.node_root!,
+      children: ["view_a", "node_cta", "view_b"],
+    };
+    project.nodes.node_title = { ...project.nodes.node_title!, parentId: "view_a" };
+
+    const reparented = unwrap(
+      reparentComponent(project, context, {
+        screenId: "screen_home",
+        nodeId: "node_title",
+        newParentId: "view_b",
+      }),
+    );
+    await repository.saveLocal(reparented);
+    const restored = await repository.loadLocal(reparented.id);
+
+    expect(restored?.nodes.view_a?.children).toEqual([]);
+    expect(restored?.nodes.view_b?.children).toEqual(["node_title"]);
+    expect(restored?.nodes.node_title?.parentId).toBe("view_b");
+    expect(restored?.nodes.node_title?.id).toBe("node_title");
+  });
+
+  it("continues to load an existing flat root-child project", async () => {
+    const repository = createDexieProjectPersistence(database);
+    const flatProject = createMinimalProjectFixture();
+
+    await repository.saveLocal(flatProject);
+    const restored = await repository.loadLocal(flatProject.id);
+
+    expect(restored?.nodes["node_root"]?.children).toEqual(["node_title", "node_cta"]);
+    expect(restored?.nodes["node_title"]?.parentId).toBe("node_root");
+    expect(restored?.nodes["node_cta"]?.parentId).toBe("node_root");
   });
 
   it("persists a renamed project and its updated dashboard summary", async () => {
@@ -206,5 +309,32 @@ describe("Dexie project persistence", () => {
     expect(restored?.nodes["node_cta"]?.style.flexShrink).toBe(0);
     expect(restored?.nodes["node_cta"]?.style.alignSelf).toBe("center");
     expect(restored?.nodes["node_title"]?.style).toEqual(edited.nodes["node_title"]?.style);
+  });
+
+  it("preserves View container Flexbox values across save and load", async () => {
+    const repository = createDexieProjectPersistence(database);
+    const edited = unwrap(
+      updateNodeStyle(createMinimalProjectFixture(), createEditorCommandContext(), {
+        nodeId: "node_root",
+        style: {
+          flexDirection: "row-reverse",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 16,
+        },
+      }),
+    );
+    const childOrder = edited.nodes["node_root"]?.children;
+
+    await repository.saveLocal(edited);
+    const restored = await repository.loadLocal(edited.id);
+
+    expect(restored?.nodes["node_root"]?.style).toMatchObject({
+      flexDirection: "row-reverse",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 16,
+    });
+    expect(restored?.nodes["node_root"]?.children).toEqual(childOrder);
   });
 });

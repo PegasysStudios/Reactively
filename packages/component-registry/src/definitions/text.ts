@@ -21,6 +21,7 @@ export const textDefinition: ComponentDefinition = {
     canHaveChildren: false,
     allowedChildTypes: [],
     supportsAbsolutePosition: true,
+    supportsContainerLayout: false,
     supportsFlexItem: true,
     supportsTextStyle: true,
     supportsEvents: ["onPress"],

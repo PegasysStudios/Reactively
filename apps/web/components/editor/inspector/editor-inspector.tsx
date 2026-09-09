@@ -16,6 +16,7 @@ import { PositionLayoutSection } from "./position-layout-section";
 /** Right-side property inspector rendered directly from canonical project state. */
 export function EditorInspector() {
   const selectedNodeId = useEditorStore((state) => state.selection.primaryNodeId);
+  const screenId = useEditorStore((state) => state.selection.screenId);
   const project = useProjectStore((state) => state.project);
   const selectedNode = useProjectStore((state) => selectProjectNode(state, selectedNodeId));
   const definition = selectedNode ? getComponentDefinition(selectedNode.type) : undefined;
@@ -34,6 +35,7 @@ export function EditorInspector() {
             node={selectedNode}
             project={project}
             definition={definition}
+            screenId={screenId}
           />
         ) : (
           <div className="flex min-h-0 flex-1 items-center justify-center px-4">
@@ -49,18 +51,20 @@ function SelectedNodeInspector({
   node,
   project,
   definition,
+  screenId,
 }: {
   node: ComponentNode;
   project: ReactivelyProject;
   definition: ReturnType<typeof getComponentDefinition>;
+  screenId: string | null;
 }) {
   return (
     <InspectorTabs
       properties={
         <ScrollArea className="h-full">
-          <ParentComponentField project={project} node={node} />
+          <ParentComponentField project={project} node={node} screenId={screenId} />
           <PositionLayoutSection node={node} />
-          <FlexboxSection node={node} />
+          <FlexboxSection node={node} definition={definition} />
           <ComponentProperties node={node} definition={definition} />
         </ScrollArea>
       }

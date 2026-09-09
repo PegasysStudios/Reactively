@@ -29,6 +29,7 @@ export const REACT_NATIVE_LAYOUT_DEFAULTS = {
   flexWrap: "nowrap",
   flexGrow: 0,
   flexShrink: 0,
+  gap: 0,
 } as const satisfies Partial<ComponentStyle>;
 
 /** An axis-aligned rectangle in document coordinates. */

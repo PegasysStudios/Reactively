@@ -2,11 +2,11 @@ import {
   addNode,
   deleteNode,
   renameProject,
-  reparentNode,
+  reparentComponent,
   updateNodeProps,
   updateNodeStyle,
 } from "@reactively/editor-engine";
-import type { ComponentStyle, NodeId } from "@reactively/project-schema";
+import type { ComponentStyle, NodeId, ScreenId } from "@reactively/project-schema";
 
 import { saveCurrentProjectLocally } from "@/lib/projects/local-project-lifecycle";
 
@@ -40,7 +40,12 @@ export const projectCommands = {
     return true;
   },
 
-  async addComponent(params: { parentId: NodeId; type: string; index?: number }): Promise<boolean> {
+  async addComponent(params: {
+    screenId: ScreenId;
+    parentId: NodeId;
+    type: string;
+    index?: number;
+  }): Promise<boolean> {
     const applied = useProjectStore
       .getState()
       .applyMutation(`Add ${params.type}`, (project, context) => addNode(project, context, params));
@@ -61,12 +66,26 @@ export const projectCommands = {
       );
   },
 
-  reparentComponent(params: { nodeId: NodeId; newParentId: NodeId; index?: number }): boolean {
-    return useProjectStore
+  async reparentComponent(params: {
+    screenId: ScreenId;
+    nodeId: NodeId;
+    newParentId: NodeId;
+  }): Promise<boolean> {
+    const before = useProjectStore.getState().project;
+    const applied = useProjectStore
       .getState()
       .applyMutation("Move component", (project, context) =>
-        reparentNode(project, context, params),
+        reparentComponent(project, context, params),
       );
+
+    if (!applied) {
+      return false;
+    }
+
+    if (useProjectStore.getState().project !== before) {
+      await saveCurrentProjectLocally();
+    }
+    return true;
   },
 
   async updateComponentProps(params: {
@@ -87,10 +106,7 @@ export const projectCommands = {
     return true;
   },
 
-  async updateComponentStyle(params: {
-    nodeId: NodeId;
-    style: ComponentStyle;
-  }): Promise<boolean> {
+  async updateComponentStyle(params: { nodeId: NodeId; style: ComponentStyle }): Promise<boolean> {
     const applied = useProjectStore
       .getState()
       .applyMutation("Update style", (project, context) =>

@@ -14,17 +14,24 @@ export {
   addNode,
   deleteNode,
   renameProject,
-  reparentNode,
+  reparentComponent,
   updateNodeProps,
   updateNodeStyle,
   type AddNodeParams,
   type DeleteNodeParams,
   type MutationResult,
   type RenameProjectParams,
-  type ReparentNodeParams,
+  type ReparentComponentParams,
   type UpdateNodePropsParams,
   type UpdateNodeStyleParams,
 } from "./operations.js";
+
+export {
+  getValidParentCandidates,
+  type ParentCandidate,
+  type ParentCandidateKind,
+  type ValidParentCandidatesParams,
+} from "./parent-candidates.js";
 
 export type { ProjectPersistence, StoredProjectSummary } from "./ports/project-persistence.js";
 
@@ -44,5 +51,7 @@ export {
   getAncestorIds,
   getScreenRootIds,
   isAncestorOf,
+  isNodeInScreenTree,
   isScreenRoot,
+  isScreenTreeConsistent,
 } from "./tree.js";

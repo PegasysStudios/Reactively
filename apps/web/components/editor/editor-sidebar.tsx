@@ -1,31 +1,24 @@
 "use client";
 
-import {
-  Box,
-  ChevronDown,
-  FileText,
-  Image,
-  Layers3,
-  LayoutGrid,
-  Palette,
-  Plus,
-} from "lucide-react";
+import type { ReactivelyProject, ScreenId } from "@reactively/project-schema";
+import { FileText, Image, LayoutGrid, Palette, Plus } from "lucide-react";
 
 import { Panel } from "@/components/ui/panel";
-import { ScrollArea } from "@/components/ui/scroll-area";
-
 import { ComponentLibraryPanel } from "./component-library-panel";
+import { LayersPanel } from "./layers/layers-panel";
 
 /**
  * Left tool rail and stacked Pages, Layers and Component Library panels.
  */
 export function EditorSidebar({
+  project,
+  screenId,
   screenName,
-  rootNodeName,
   rootNodeId,
 }: {
+  project: ReactivelyProject;
+  screenId: ScreenId;
   screenName: string;
-  rootNodeName: string | null;
   rootNodeId: string;
 }) {
   return (
@@ -48,26 +41,12 @@ export function EditorSidebar({
           </div>
         </Panel>
 
-        <Panel title="Layers" action={<PanelAddButton label="Add layer" />} className="min-h-0">
-          <ScrollArea className="h-full">
-            <div className="px-3 pb-3 text-sm">
-              <div className="flex h-8 items-center gap-2 font-medium text-foreground">
-                <ChevronDown className="size-3.5 text-foreground-muted" aria-hidden />
-                <Layers3 className="size-3.5 text-foreground-muted" aria-hidden />
-                <span className="truncate">{screenName} (Screen)</span>
-              </div>
-              {rootNodeName ? (
-                <div className="ml-5 flex h-8 items-center gap-2 text-foreground-muted">
-                  <Box className="size-3.5" aria-hidden />
-                  <span className="truncate">{rootNodeName}</span>
-                </div>
-              ) : null}
-            </div>
-          </ScrollArea>
+        <Panel title="Layers" className="min-h-0">
+          <LayersPanel project={project} screenId={screenId} />
         </Panel>
 
         <Panel title="Component Library" className="min-h-0">
-          <ComponentLibraryPanel parentId={rootNodeId} />
+          <ComponentLibraryPanel screenId={screenId} rootNodeId={rootNodeId} />
         </Panel>
       </div>
     </aside>

@@ -2,6 +2,7 @@ import { percent, points } from "@reactively/project-schema";
 import { describe, expect, it } from "vitest";
 
 import {
+  componentContainerStyleToEditorCss,
   componentPaddingToEditorCss,
   componentStyleToEditorCss,
 } from "@/lib/editor/layout-style-css";
@@ -95,5 +96,27 @@ describe("componentStyleToEditorCss", () => {
 
   it("does not invent Flexbox CSS when those fields are absent", () => {
     expect(componentStyleToEditorCss({ width: points(200) })).toEqual({ width: 200 });
+  });
+});
+
+describe("componentContainerStyleToEditorCss", () => {
+  it("maps canonical View container Flexbox values to CSS", () => {
+    expect(
+      componentContainerStyleToEditorCss({
+        flexDirection: "row-reverse",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 16,
+      }),
+    ).toEqual({
+      flexDirection: "row-reverse",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 16,
+    });
+  });
+
+  it("does not materialize absent React Native defaults", () => {
+    expect(componentContainerStyleToEditorCss({})).toEqual({});
   });
 });

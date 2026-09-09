@@ -109,6 +109,11 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       return false;
     }
 
+    if (result.value === current) {
+      set({ lastError: null });
+      return true;
+    }
+
     const next = history.execute(
       current,
       createProjectCommand({

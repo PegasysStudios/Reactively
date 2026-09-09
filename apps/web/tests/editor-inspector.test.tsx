@@ -12,10 +12,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { EditorInspector } from "@/components/editor/editor-inspector";
 import { useEditorStore } from "@/lib/state/editor-store";
+import { projectCommands } from "@/lib/state/project-commands";
 import { selectProjectNode, useProjectStore } from "@/lib/state/project-store";
 
 function renderInspector(project: ReactivelyProject = createMinimalProjectFixture()) {
   useProjectStore.getState().loadProject(project);
+  useEditorStore.getState().openScreen(project.initialScreenId);
   return render(
     <div className="flex h-[800px]">
       <EditorInspector />
@@ -131,9 +133,134 @@ describe("editor inspector", () => {
 
     act(() => useEditorStore.getState().selectNode("node_title"));
 
-    expect(screen.getByRole("textbox", { name: "Parent Component" })).toHaveTextContent(
+    expect(screen.getByRole("combobox", { name: "Parent Component" })).toHaveTextContent(
       "Home (Screen)",
     );
+  });
+
+  it("shows a nested node's real component parent", () => {
+    const project = createMinimalProjectFixture();
+    project.nodes["node_view"] = {
+      id: "node_view",
+      type: "View",
+      name: "View",
+      parentId: "node_root",
+      children: ["node_title"],
+      props: {},
+      style: {},
+      events: [],
+    };
+    project.nodes["node_root"] = {
+      ...project.nodes["node_root"]!,
+      children: ["node_view", "node_cta"],
+    };
+    project.nodes["node_title"] = {
+      ...project.nodes["node_title"]!,
+      parentId: "node_view",
+    };
+    renderInspector(project);
+
+    act(() => useEditorStore.getState().selectNode("node_title"));
+
+    expect(screen.getByRole("combobox", { name: "Parent Component" })).toHaveTextContent("View");
+  });
+
+  it("lists only valid same-screen parents with deterministic View labels", async () => {
+    const project = createMinimalProjectFixture();
+    project.nodes.view_a = {
+      id: "view_a",
+      type: "View",
+      name: "View",
+      parentId: "node_root",
+      children: [],
+      props: {},
+      style: {},
+      events: [],
+    };
+    project.nodes.view_b = {
+      ...project.nodes.view_a,
+      id: "view_b",
+    };
+    project.nodes.node_root = {
+      ...project.nodes.node_root!,
+      children: [...project.nodes.node_root!.children, "view_a", "view_b"],
+    };
+    renderInspector(project);
+
+    act(() => useEditorStore.getState().selectNode("node_title"));
+    fireEvent.click(screen.getByRole("combobox", { name: "Parent Component" }));
+
+    expect(await screen.findByRole("option", { name: "Home (Screen)" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "View" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "View · 2" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Text" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Button" })).not.toBeInTheDocument();
+  });
+
+  it("reparents through the command path, persists, and preserves selection", async () => {
+    const project = createMinimalProjectFixture();
+    project.nodes.view_a = {
+      id: "view_a",
+      type: "View",
+      name: "View A",
+      parentId: "node_root",
+      children: ["node_title"],
+      props: {},
+      style: { flexDirection: "column" },
+      events: [],
+    };
+    project.nodes.view_b = {
+      id: "view_b",
+      type: "View",
+      name: "View B",
+      parentId: "node_root",
+      children: [],
+      props: {},
+      style: { flexDirection: "row", gap: 16 },
+      events: [],
+    };
+    project.nodes.node_root = {
+      ...project.nodes.node_root!,
+      children: ["view_a", "node_cta", "view_b"],
+    };
+    project.nodes.node_title = {
+      ...project.nodes.node_title!,
+      parentId: "view_a",
+      style: { ...project.nodes.node_title!.style, position: "absolute", left: points(12) },
+    };
+    renderInspector(project);
+
+    act(() => useEditorStore.getState().selectNode("node_title"));
+    await chooseInspectorOption("Parent Component", "View B");
+
+    expect(useProjectStore.getState().project?.nodes.view_a?.children).toEqual([]);
+    expect(useProjectStore.getState().project?.nodes.view_b?.children).toEqual(["node_title"]);
+    expect(useProjectStore.getState().project?.nodes.node_title).toMatchObject({
+      id: "node_title",
+      parentId: "view_b",
+      style: expect.objectContaining({ position: "absolute", left: points(12) }),
+    });
+    expect(useEditorStore.getState().selection.primaryNodeId).toBe("node_title");
+    await waitFor(() => expect(useProjectStore.getState().isDirty).toBe(false));
+  });
+
+  it("does not dirty or rewrite the project when the current parent is selected", async () => {
+    const project = createMinimalProjectFixture();
+    renderInspector(project);
+    act(() => useEditorStore.getState().selectNode("node_title"));
+
+    const before = useProjectStore.getState().project;
+    const applied = await projectCommands.reparentComponent({
+      screenId: "screen_home",
+      nodeId: "node_title",
+      newParentId: "node_root",
+    });
+
+    expect(applied).toBe(true);
+    expect(useProjectStore.getState().project).toBe(before);
+    expect(useProjectStore.getState().isDirty).toBe(false);
+    expect(useProjectStore.getState().canUndo).toBe(false);
+    expect(useEditorStore.getState().selection.primaryNodeId).toBe("node_title");
   });
 
   it("switches tabs in editor state without modifying the project document", () => {
@@ -392,7 +519,8 @@ describe("margin and padding inspector", () => {
     expect(marginGrid).not.toContainElement(screen.getByRole("textbox", { name: "Padding top" }));
     expect(marginTop.parentElement).toHaveTextContent("T");
 
-    const paddingGrid = screen.getByRole("textbox", { name: "Padding top" }).parentElement?.parentElement;
+    const paddingGrid = screen.getByRole("textbox", { name: "Padding top" }).parentElement
+      ?.parentElement;
     expect(paddingGrid).toContainElement(screen.getByRole("textbox", { name: "Padding left" }));
     expect(paddingGrid).not.toContainElement(screen.getByRole("textbox", { name: "Margin top" }));
 
@@ -553,7 +681,10 @@ describe("flexbox inspector", () => {
     expect(screen.getByRole("heading", { name: "Flexbox" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Flex Grow" })).toHaveValue("0");
     expect(screen.getByRole("textbox", { name: "Flex Shrink" })).toHaveValue("0");
-    expect(screen.getByRole("combobox", { name: "Align Self" })).toHaveAttribute("data-value", "auto");
+    expect(screen.getByRole("combobox", { name: "Align Self" })).toHaveAttribute(
+      "data-value",
+      "auto",
+    );
   });
 
   it("places Flexbox between Position & Layout and component-specific properties", () => {
@@ -561,7 +692,9 @@ describe("flexbox inspector", () => {
 
     act(() => useEditorStore.getState().selectNode("node_cta"));
 
-    const headings = screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent);
+    const headings = screen
+      .getAllByRole("heading", { level: 3 })
+      .map((heading) => heading.textContent);
     expect(headings).toEqual(["Position & Layout", "Flexbox", "Button Properties"]);
   });
 
@@ -727,6 +860,34 @@ describe("flexbox inspector", () => {
     expect(useProjectStore.getState().project?.nodes["node_cta"]?.style.flexShrink).toBeUndefined();
     expect(useProjectStore.getState().project?.nodes["node_cta"]?.style.alignSelf).toBeUndefined();
     expect(useEditorStore.getState().selection.primaryNodeId).toBe("node_cta");
+  });
+
+  it("does not persist effective container defaults when an unstyled View is inspected", () => {
+    const project = createMinimalProjectFixture();
+    const root = project.nodes["node_root"];
+    if (!root) {
+      throw new Error("Fixture is missing its root View.");
+    }
+
+    project.nodes["node_view"] = {
+      id: "node_view",
+      type: "View",
+      name: "Nested View",
+      parentId: root.id,
+      children: [],
+      props: {},
+      style: {},
+      events: [],
+    };
+    project.nodes[root.id] = { ...root, children: [...root.children, "node_view"] };
+    const beforeMount = structuredClone(project);
+    renderInspector(project);
+
+    act(() => useEditorStore.getState().selectNode("node_view"));
+
+    expect(useProjectStore.getState().project).toEqual(beforeMount);
+    expect(useProjectStore.getState().project?.nodes["node_view"]?.style).toEqual({});
+    expect(useEditorStore.getState().selection.primaryNodeId).toBe("node_view");
   });
 
   it("still updates Position and spacing after Flexbox is present", async () => {

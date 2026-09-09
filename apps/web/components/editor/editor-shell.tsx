@@ -58,11 +58,6 @@ export function EditorShell({ projectId }: { projectId: string }) {
     return <EditorMessage>The initial screen does not contain a valid root node.</EditorMessage>;
   }
 
-  const screenComponents = rootNode.children.flatMap((nodeId) => {
-    const node = project.nodes[nodeId];
-    return node ? [node] : [];
-  });
-
   return (
     <>
       <EditorToolbar
@@ -75,14 +70,15 @@ export function EditorShell({ projectId }: { projectId: string }) {
       {activeSection === "design" ? (
         <div className="flex min-h-0 flex-1 bg-editor-workspace">
           <EditorSidebar
+            project={project}
+            screenId={initialScreen.id}
             screenName={initialScreen.name}
-            rootNodeName={rootNode.name}
             rootNodeId={rootNode.id}
           />
           <EditorCanvas
-            projectId={projectId}
+            project={project}
+            screenId={initialScreen.id}
             screenName={initialScreen.name}
-            components={screenComponents}
           />
           <EditorInspector />
         </div>

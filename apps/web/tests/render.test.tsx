@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { createMinimalProjectFixture } from "@reactively/project-schema";
 import { Tooltip as RadixTooltip } from "radix-ui";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -25,20 +26,37 @@ describe("marketing landing page", () => {
 
 describe("editor shell regions", () => {
   it("renders the editor rail and component insertion controls", () => {
-    render(<EditorSidebar screenName="Home" rootNodeName="Screen Root" rootNodeId="node_root" />);
+    const project = createMinimalProjectFixture();
+    render(
+      <EditorSidebar
+        project={project}
+        screenId="screen_home"
+        screenName="Home"
+        rootNodeId="node_root"
+      />,
+    );
 
     expect(screen.getByRole("heading", { name: "Pages" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Layers" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Component Library" })).toBeInTheDocument();
     expect(screen.getByText("Home")).toBeInTheDocument();
-    expect(screen.getByText("Screen Root")).toBeInTheDocument();
+    expect(screen.getByText("Home (Screen)")).toBeInTheDocument();
+    expect(screen.queryByText("Screen Root")).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Add View" })).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Add Text" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Button" })).toBeInTheDocument();
   });
 
   it("filters the component library by component label", () => {
-    render(<EditorSidebar screenName="Home" rootNodeName="Screen Root" rootNodeId="node_root" />);
+    const project = createMinimalProjectFixture();
+    render(
+      <EditorSidebar
+        project={project}
+        screenId="screen_home"
+        screenName="Home"
+        rootNodeId="node_root"
+      />,
+    );
 
     fireEvent.change(screen.getByRole("searchbox", { name: "Search components" }), {
       target: { value: "button" },
@@ -105,11 +123,7 @@ describe("editor shell regions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Untitled Project" }));
     const nameInput = screen.getByRole("textbox", { name: "Project name" });
     expect(nameInput).toHaveFocus();
-    expect(nameInput.parentElement).toHaveClass(
-      "w-auto",
-      "max-w-44",
-      "transition-[width]",
-    );
+    expect(nameInput.parentElement).toHaveClass("w-auto", "max-w-44", "transition-[width]");
 
     fireEvent.change(nameInput, { target: { value: "Renamed Project" } });
     fireEvent.keyDown(nameInput, { key: "Enter" });

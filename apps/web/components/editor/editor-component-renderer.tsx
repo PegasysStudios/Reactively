@@ -1,14 +1,15 @@
 import { getComponentDefinition } from "@reactively/component-registry";
 import type { ComponentNode, NodeId } from "@reactively/project-schema";
-import type { ComponentType, KeyboardEvent, MouseEvent } from "react";
+import type { ComponentType, KeyboardEvent, MouseEvent, ReactNode } from "react";
 
 import {
+  componentContainerStyleToEditorCss,
   componentPaddingToEditorCss,
   componentStyleToEditorCss,
 } from "@/lib/editor/layout-style-css";
 import { cn } from "@/lib/utils";
 
-type ComponentRenderer = ComponentType<{ node: ComponentNode }>;
+type ComponentRenderer = ComponentType<{ node: ComponentNode; children?: ReactNode }>;
 
 const renderers: Readonly<Record<string, ComponentRenderer>> = {
   View: ViewRenderer,
@@ -19,13 +20,27 @@ const renderers: Readonly<Record<string, ComponentRenderer>> = {
 /** Small editor-only rendering and selection boundary for supported project node types. */
 export function EditorComponentRenderer({
   node,
+  nodes,
   isSelected,
+  selectedNodeId,
   onSelect,
+  ancestorIds = new Set<NodeId>(),
 }: {
   node: ComponentNode;
+  nodes: Readonly<Record<string, ComponentNode>>;
   isSelected: boolean;
+  selectedNodeId: NodeId | null;
   onSelect: (nodeId: NodeId) => void;
+  ancestorIds?: ReadonlySet<NodeId>;
 }) {
+  if (ancestorIds.has(node.id)) {
+    return (
+      <div className="rounded-md border border-danger/30 bg-red-50 px-3 py-2 text-xs text-danger">
+        Invalid component cycle at {node.name}
+      </div>
+    );
+  }
+
   const Renderer = renderers[node.type];
   if (!Renderer) {
     return (
@@ -50,6 +65,25 @@ export function EditorComponentRenderer({
     onSelect(node.id);
   };
 
+  const nextAncestors = new Set(ancestorIds);
+  nextAncestors.add(node.id);
+  const children = node.children.flatMap((childId) => {
+    const child = nodes[childId];
+    return child
+      ? [
+          <EditorComponentRenderer
+            key={child.id}
+            node={child}
+            nodes={nodes}
+            isSelected={selectedNodeId === child.id}
+            selectedNodeId={selectedNodeId}
+            onSelect={onSelect}
+            ancestorIds={nextAncestors}
+          />,
+        ]
+      : [];
+  });
+
   return (
     <div
       role="button"
@@ -66,34 +100,48 @@ export function EditorComponentRenderer({
       onClick={selectNode}
       onKeyDown={selectNodeWithKeyboard}
     >
-      <Renderer node={node} />
+      <Renderer node={node}>{children}</Renderer>
     </div>
   );
 }
 
-function ViewRenderer({ node }: { node: ComponentNode }) {
+function ViewRenderer({ node, children }: { node: ComponentNode; children?: ReactNode }) {
   const hasExplicitHeight = node.style.height?.type === "points";
   const hasPadding = node.style.padding !== undefined;
+  const isEmpty = node.children.length === 0;
 
   return (
-    <span
+    <div
       className={cn(
-        "flex w-full items-center justify-center rounded-lg border border-dashed border-[#aeb7c8] bg-[#f8f9fc] text-xs font-medium text-[#6c778d]",
-        hasExplicitHeight ? "h-full" : "min-h-16",
-        !hasPadding && "px-3",
-        !hasPadding && !hasExplicitHeight && "py-4",
+        "flex w-full flex-col items-stretch justify-start rounded-lg border border-dashed border-[#aeb7c8] bg-[#f8f9fc]",
+        hasExplicitHeight && "h-full",
+        isEmpty && !hasExplicitHeight && "min-h-16",
+        isEmpty && "text-xs font-medium text-[#6c778d]",
+        isEmpty && !hasPadding && "px-3 py-4",
       )}
-      style={componentPaddingToEditorCss(node.style)}
+      style={{
+        ...componentPaddingToEditorCss(node.style),
+        ...componentContainerStyleToEditorCss(node.style),
+      }}
     >
-      {getComponentDefinition(node.type)?.label}
-    </span>
+      {isEmpty ? (
+        <span className="flex flex-1 items-center justify-center">
+          {getComponentDefinition(node.type)?.label}
+        </span>
+      ) : (
+        children
+      )}
+    </div>
   );
 }
 
 function TextRenderer({ node }: { node: ComponentNode }) {
   const content = typeof node.props.content === "string" ? node.props.content : "";
   return (
-    <span className="block text-base text-[#11162a]" style={componentPaddingToEditorCss(node.style)}>
+    <span
+      className="block text-base text-[#11162a]"
+      style={componentPaddingToEditorCss(node.style)}
+    >
       {content}
     </span>
   );

@@ -39,6 +39,12 @@ describe("component registry", () => {
     }
   });
 
+  it("exposes container Flexbox capability only for View", () => {
+    expect(requireComponentDefinition("View").capabilities.supportsContainerLayout).toBe(true);
+    expect(requireComponentDefinition("Text").capabilities.supportsContainerLayout).toBe(false);
+    expect(requireComponentDefinition("Button").capabilities.supportsContainerLayout).toBe(false);
+  });
+
   it("generates Button from Pressable + Text, not React Native's Button", () => {
     const button = requireComponentDefinition("Button");
     expect(button.generation.composesReactNative).toEqual(["Pressable", "Text"]);
@@ -72,6 +78,11 @@ describe("component registry", () => {
 
 describe("nesting rules", () => {
   it("lets View contain children", () => {
+    expect(getComponentDefinition("View")?.capabilities.allowedChildTypes).toEqual([
+      "View",
+      "Text",
+      "Button",
+    ]);
     expect(canHaveChildren("View")).toBe(true);
     expect(canNest("View", "Text")).toBe(true);
     expect(canNest("View", "Button")).toBe(true);

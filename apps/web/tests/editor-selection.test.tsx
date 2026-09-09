@@ -3,7 +3,7 @@ import "fake-indexeddb/auto";
 import {
   ReactivelyProjectSchema,
   createMinimalProjectFixture,
-  type ComponentNode,
+  type ReactivelyProject,
 } from "@reactively/project-schema";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -12,28 +12,47 @@ import { EditorInspector } from "@/components/editor/editor-inspector";
 import { useEditorStore } from "@/lib/state/editor-store";
 import { useProjectStore } from "@/lib/state/project-store";
 
-function getRenderedComponents(): readonly ComponentNode[] {
-  const project = createMinimalProjectFixture();
-  const screen = project.screens[project.initialScreenId];
-  if (!screen) {
-    throw new Error("Test project is missing its initial screen.");
-  }
-
-  const root = project.nodes[screen.rootNodeId];
-  if (!root) {
-    throw new Error("Test project is missing its screen root.");
-  }
-
-  return root.children.flatMap((nodeId) => {
-    const node = project.nodes[nodeId];
-    return node ? [node] : [];
-  });
-}
-
 beforeEach(() => {
   useEditorStore.getState().reset();
   useProjectStore.getState().clearProject();
 });
+
+function createNestedProjectFixture(): ReactivelyProject {
+  const project = createMinimalProjectFixture();
+  project.nodes["node_outer"] = {
+    id: "node_outer",
+    type: "View",
+    name: "Outer View",
+    parentId: "node_root",
+    children: ["node_title", "node_nested"],
+    props: {},
+    style: {},
+    events: [],
+  };
+  project.nodes["node_nested"] = {
+    id: "node_nested",
+    type: "View",
+    name: "Nested View",
+    parentId: "node_outer",
+    children: ["node_cta"],
+    props: {},
+    style: {},
+    events: [],
+  };
+  project.nodes["node_root"] = {
+    ...project.nodes["node_root"]!,
+    children: ["node_outer"],
+  };
+  project.nodes["node_title"] = {
+    ...project.nodes["node_title"]!,
+    parentId: "node_outer",
+  };
+  project.nodes["node_cta"] = {
+    ...project.nodes["node_cta"]!,
+    parentId: "node_nested",
+  };
+  return project;
+}
 
 describe("editor selection state", () => {
   it("starts without a selected component", () => {
@@ -76,14 +95,43 @@ describe("editor selection state", () => {
 });
 
 describe("editor component selection", () => {
+  it("renders Text inside its View and nested Views recursively", () => {
+    const project = createNestedProjectFixture();
+    render(<EditorCanvas project={project} screenId={project.initialScreenId} screenName="Home" />);
+
+    const outerView = screen.getByRole("button", { name: "Select Outer View" });
+    const nestedView = screen.getByRole("button", { name: "Select Nested View" });
+    const text = screen.getByRole("button", { name: "Select Title" });
+    const button = screen.getByRole("button", { name: "Select Primary Action" });
+
+    expect(outerView).toContainElement(text);
+    expect(outerView).toContainElement(nestedView);
+    expect(nestedView).toContainElement(button);
+  });
+
+  it("selects a nested child without also selecting its parent", () => {
+    const project = createNestedProjectFixture();
+    render(<EditorCanvas project={project} screenId={project.initialScreenId} screenName="Home" />);
+
+    const outerView = screen.getByRole("button", { name: "Select Outer View" });
+    const text = screen.getByRole("button", { name: "Select Title" });
+
+    fireEvent.click(text);
+
+    expect(useEditorStore.getState().selection.primaryNodeId).toBe("node_title");
+    expect(text).toHaveAttribute("aria-pressed", "true");
+    expect(outerView).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(outerView);
+
+    expect(useEditorStore.getState().selection.primaryNodeId).toBe("node_outer");
+    expect(outerView).toHaveAttribute("aria-pressed", "true");
+    expect(text).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("selects rendered components, moves the marker, and clears from the canvas", () => {
-    render(
-      <EditorCanvas
-        projectId="project_fixture"
-        screenName="Home"
-        components={getRenderedComponents()}
-      />,
-    );
+    const project = createMinimalProjectFixture();
+    render(<EditorCanvas project={project} screenId={project.initialScreenId} screenName="Home" />);
 
     const text = screen.getByRole("button", { name: "Select Title" });
     const button = screen.getByRole("button", { name: "Select Primary Action" });
@@ -117,11 +165,7 @@ describe("editor component selection", () => {
 
     render(
       <>
-        <EditorCanvas
-          projectId="project_fixture"
-          screenName="Home"
-          components={getRenderedComponents()}
-        />
+        <EditorCanvas project={project} screenId={project.initialScreenId} screenName="Home" />
         <EditorInspector />
       </>,
     );
@@ -140,15 +184,10 @@ describe("editor component selection", () => {
   });
 
   it("clears a selection that is not rendered on the current screen", async () => {
+    const project = createMinimalProjectFixture();
     useEditorStore.getState().selectNode("node_missing");
 
-    render(
-      <EditorCanvas
-        projectId="project_fixture"
-        screenName="Home"
-        components={getRenderedComponents()}
-      />,
-    );
+    render(<EditorCanvas project={project} screenId={project.initialScreenId} screenName="Home" />);
 
     expect(useEditorStore.getState().selection.primaryNodeId).toBeNull();
   });

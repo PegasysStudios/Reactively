@@ -23,6 +23,8 @@ export interface EditorCommandContext {
   canAcceptChild(parentType: string, childType: string): boolean;
   /** Whether a component type may be a screen's root node. */
   canBeScreenRoot(type: string): boolean;
+  /** Whether a component may expose layout controls for its direct children. */
+  supportsContainerLayout(type: string): boolean;
   /** Initial name, props and style for a newly inserted component. */
   defaultsFor(type: string): ComponentDefaults | undefined;
 }

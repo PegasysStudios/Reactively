@@ -16,6 +16,8 @@ export function createEditorCommandContext(): EditorCommandContext {
     now: () => new Date().toISOString(),
     canAcceptChild: (parentType, childType) => canNest(parentType, childType),
     canBeScreenRoot: (type) => getComponentDefinition(type)?.capabilities.canBeScreenRoot ?? false,
+    supportsContainerLayout: (type) =>
+      getComponentDefinition(type)?.capabilities.supportsContainerLayout ?? false,
     defaultsFor: (type): ComponentDefaults | undefined => {
       const definition = getComponentDefinition(type);
       if (!definition) {

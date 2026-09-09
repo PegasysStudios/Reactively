@@ -1,6 +1,7 @@
 "use client";
 
-import type { ComponentNode } from "@reactively/project-schema";
+import { isNodeInScreenTree } from "@reactively/editor-engine";
+import type { ReactivelyProject, ScreenId } from "@reactively/project-schema";
 import { Minus, Plus, Redo2, Undo2 } from "lucide-react";
 import { useEffect } from "react";
 
@@ -24,28 +25,31 @@ import { EditorDeviceFrame } from "./editor-device-frame";
  *    different paths, is what surfaces editor/runtime parity bugs instead of hiding them.
  */
 export function EditorCanvas({
-  projectId,
+  project,
+  screenId,
   screenName,
-  components,
 }: {
-  projectId: string;
+  project: ReactivelyProject;
+  screenId: ScreenId;
   screenName: string;
-  components: readonly ComponentNode[];
 }) {
   const { width, height, label } = DEFAULT_PREVIEW_VIEWPORT;
+  const screen = project.screens[screenId];
+  const rootNode = screen ? project.nodes[screen.rootNodeId] : undefined;
+  const rootChildren = rootNode?.children ?? [];
   const selectedNodeId = useEditorStore((state) => state.selection.primaryNodeId);
   const selectNode = useEditorStore((state) => state.selectNode);
   const clearSelection = useEditorStore((state) => state.clearSelection);
 
   useEffect(() => {
-    if (selectedNodeId && !components.some((component) => component.id === selectedNodeId)) {
+    if (selectedNodeId && !isNodeInScreenTree(project, screenId, selectedNodeId)) {
       clearSelection();
     }
-  }, [clearSelection, components, selectedNodeId]);
+  }, [clearSelection, project, screenId, selectedNodeId]);
 
   return (
     <main
-      aria-label={`${screenName} canvas for project ${projectId}`}
+      aria-label={`${screenName} canvas for project ${project.id}`}
       className="relative m-2 min-w-0 flex-1 overflow-hidden rounded-lg border border-border bg-[radial-gradient(circle_at_center,#fafaff_0%,var(--reactively-editor-canvas)_74%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]"
       onPointerDown={() => {
         if (useEditorStore.getState().inspectorDropdownOpenCount > 0) {
@@ -95,16 +99,23 @@ export function EditorCanvas({
           <div className="h-full overflow-y-auto px-6 py-7">
             <p className="mb-5 text-sm font-semibold text-[#11162a]">{screenName} Screen</p>
 
-            {components.length > 0 ? (
+            {rootChildren.length > 0 ? (
               <div className="relative flex flex-col items-stretch gap-3">
-                {components.map((component) => (
-                  <EditorComponentRenderer
-                    key={component.id}
-                    node={component}
-                    isSelected={selectedNodeId === component.id}
-                    onSelect={selectNode}
-                  />
-                ))}
+                {rootChildren.flatMap((nodeId) => {
+                  const node = project.nodes[nodeId];
+                  return node
+                    ? [
+                        <EditorComponentRenderer
+                          key={node.id}
+                          node={node}
+                          nodes={project.nodes}
+                          isSelected={selectedNodeId === node.id}
+                          selectedNodeId={selectedNodeId}
+                          onSelect={selectNode}
+                        />,
+                      ]
+                    : [];
+                })}
               </div>
             ) : (
               <div className="flex min-h-48 items-center justify-center text-center">

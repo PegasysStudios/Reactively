@@ -1,11 +1,13 @@
 "use client";
 
 import { listComponentDefinitions } from "@reactively/component-registry";
-import type { NodeId } from "@reactively/project-schema";
+import type { NodeId, ScreenId } from "@reactively/project-schema";
 import { MousePointerClick, Search, Square, Type } from "lucide-react";
 import type { ComponentType } from "react";
 import { useState } from "react";
 
+import { resolveComponentInsertionParent } from "@/lib/editor/component-insertion-target";
+import { useEditorStore } from "@/lib/state/editor-store";
 import { projectCommands } from "@/lib/state/project-commands";
 import { useProjectStore } from "@/lib/state/project-store";
 
@@ -17,10 +19,18 @@ const componentIcons: Readonly<Record<string, ComponentType<{ className?: string
 };
 
 /** Minimal searchable click-to-insert surface backed by the component registry. */
-export function ComponentLibraryPanel({ parentId }: { parentId: NodeId }) {
+export function ComponentLibraryPanel({
+  screenId,
+  rootNodeId,
+}: {
+  screenId: ScreenId;
+  rootNodeId: NodeId;
+}) {
   const [query, setQuery] = useState("");
   const [pendingType, setPendingType] = useState<string | null>(null);
   const [persistenceError, setPersistenceError] = useState<string | null>(null);
+  const project = useProjectStore((state) => state.project);
+  const selectedNodeId = useEditorStore((state) => state.selection.primaryNodeId);
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const matchesSearch = (definition: (typeof componentDefinitions)[number]) =>
@@ -43,7 +53,20 @@ export function ComponentLibraryPanel({ parentId }: { parentId: NodeId }) {
     setPersistenceError(null);
 
     try {
-      const applied = await projectCommands.addComponent({ parentId, type });
+      const parentId = project
+        ? resolveComponentInsertionParent({
+            project,
+            screenId,
+            selectedNodeId,
+            componentType: type,
+          })
+        : rootNodeId;
+      if (!parentId) {
+        setPersistenceError("The active screen could not be found.");
+        return;
+      }
+
+      const applied = await projectCommands.addComponent({ screenId, parentId, type });
       if (!applied) {
         const commandError = useProjectStore.getState().lastError;
         setPersistenceError(commandError?.message ?? "The component could not be added.");

@@ -31,25 +31,48 @@ test("creates a local project, opens it, and restores it after refresh", async (
   await expect(page.getByText("Home", { exact: true })).toBeVisible();
   await expect(page.getByText("No component selected")).toBeVisible();
 
-  await page.getByRole("button", { name: "Add Button" }).click();
-  const renderedButton = page.getByRole("button", { name: "Select Button" });
-  await expect(renderedButton).toBeVisible();
+  await page.getByRole("button", { name: "Add View" }).first().click();
+  const renderedView = page.getByRole("button", { name: "Select View" });
+  const viewLayer = page.getByRole("button", { name: "Select View layer" });
+  await expect(renderedView).toBeVisible();
+  await expect(viewLayer).toBeVisible();
 
-  await renderedButton.click();
-  await page.getByRole("textbox", { name: "Title" }).fill("Get Started");
-  await expect(renderedButton).toContainText("Get Started");
+  await renderedView.click();
+  await page.getByRole("button", { name: "Add Text" }).click();
+  const renderedText = renderedView.getByRole("button", { name: "Select Text" });
+  const textLayer = page.getByRole("button", { name: "Select Text layer" });
+  await expect(renderedText).toBeVisible();
+  await expect(textLayer).toBeVisible();
+
+  await textLayer.click();
+  await expect(renderedText).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("textbox", { name: "Parent Component" })).toContainText("View");
+
+  await renderedView.click();
+  await expect(viewLayer.locator("xpath=..")).toHaveAttribute("aria-selected", "true");
+
+  await page.getByRole("button", { name: "Collapse View layer" }).click();
+  await expect(textLayer).toBeHidden();
+  await page.getByRole("button", { name: "Expand View layer" }).click();
+  await expect(textLayer).toBeVisible();
 
   const projectId = page.url().split("/").at(-1);
   expect(projectId).toBeTruthy();
   await expect
-    .poll(() => readPersistedButtonLabel(page, projectId ?? ""))
-    .toBe("Get Started");
+    .poll(() => readPersistedHierarchy(page, projectId ?? ""))
+    .toEqual({ rootChildTypes: ["View"], viewChildTypes: ["Text"], textParentIsView: true });
 
   await page.reload();
 
   await expect(page.getByText("Untitled Project")).toBeVisible();
   await expect(page.getByText("Home", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Select Button" })).toContainText("Get Started");
+  await expect(page.getByText("No component selected")).toBeVisible();
+
+  const restoredView = page.getByRole("button", { name: "Select View" });
+  const restoredText = restoredView.getByRole("button", { name: "Select Text" });
+  await expect(restoredText).toBeVisible();
+  await restoredText.click();
+  await expect(page.getByRole("textbox", { name: "Parent Component" })).toContainText("View");
 
   // The editor must not inherit marketing chrome.
   await expect(page.getByRole("contentinfo")).toHaveCount(0);
@@ -96,7 +119,10 @@ test("persists inspector layout values after refresh", async ({ page }) => {
   );
   await expect(page.getByRole("textbox", { name: "X", exact: true })).toHaveValue("20");
   await expect(page.getByRole("textbox", { name: "Y", exact: true })).toHaveValue("30");
-  await expect(page.getByRole("combobox", { name: "Width" })).toHaveAttribute("data-value", "fixed");
+  await expect(page.getByRole("combobox", { name: "Width" })).toHaveAttribute(
+    "data-value",
+    "fixed",
+  );
   await expect(page.getByRole("textbox", { name: "Width value" })).toHaveValue("200");
   await expect(page.getByRole("textbox", { name: "Height" })).toHaveValue("56");
   await expect(page.getByRole("textbox", { name: "Margin top" })).toHaveValue("16");
@@ -151,10 +177,7 @@ async function chooseInspectorOption(page: Page, name: string, option: string) {
   await page.getByRole("option", { name: option }).click();
 }
 
-async function readPersistedButtonLabel(
-  page: Page,
-  projectId: string,
-): Promise<unknown> {
+async function readPersistedHierarchy(page: Page, projectId: string): Promise<unknown> {
   return page.evaluate(
     ({ databaseName, id }) =>
       new Promise((resolve, reject) => {
@@ -171,19 +194,30 @@ async function readPersistedButtonLabel(
             const row = getRequest.result as
               | {
                   document?: {
+                    initialScreenId?: string;
+                    screens?: Record<string, { rootNodeId?: string }>;
                     nodes?: Record<
                       string,
-                      { type?: string; props?: { label?: unknown } }
+                      { type?: string; parentId?: string; children?: string[] }
                     >;
                   };
                 }
               | undefined;
-            const nodes = row?.document?.nodes;
-            const button = nodes
-              ? Object.values(nodes).find((node) => node.type === "Button")
+            const document = row?.document;
+            const nodes = document?.nodes;
+            const rootId = document?.initialScreenId
+              ? document.screens?.[document.initialScreenId]?.rootNodeId
               : undefined;
+            const root = rootId && nodes ? nodes[rootId] : undefined;
+            const viewId = root?.children?.find((id) => nodes?.[id]?.type === "View");
+            const view = viewId && nodes ? nodes[viewId] : undefined;
+            const textId = view?.children?.find((id) => nodes?.[id]?.type === "Text");
 
-            resolve(button?.props?.label);
+            resolve({
+              rootChildTypes: root?.children?.map((id) => nodes?.[id]?.type),
+              viewChildTypes: view?.children?.map((id) => nodes?.[id]?.type),
+              textParentIsView: Boolean(textId && nodes?.[textId]?.parentId === viewId),
+            });
             database.close();
           };
         };
@@ -192,10 +226,7 @@ async function readPersistedButtonLabel(
   );
 }
 
-async function readPersistedButtonLayout(
-  page: Page,
-  projectId: string,
-): Promise<unknown> {
+async function readPersistedButtonLayout(page: Page, projectId: string): Promise<unknown> {
   return page.evaluate(
     ({ databaseName, id }) =>
       new Promise((resolve, reject) => {
@@ -253,10 +284,7 @@ async function readPersistedButtonLayout(
   );
 }
 
-async function readPersistedButtonFlexbox(
-  page: Page,
-  projectId: string,
-): Promise<unknown> {
+async function readPersistedButtonFlexbox(page: Page, projectId: string): Promise<unknown> {
   return page.evaluate(
     ({ databaseName, id }) =>
       new Promise((resolve, reject) => {

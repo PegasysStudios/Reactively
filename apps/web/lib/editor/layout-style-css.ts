@@ -44,6 +44,29 @@ export function componentPaddingToEditorCss(style: ComponentStyle): CSSPropertie
   return css;
 }
 
+/** Flexbox CSS for a View's visual surface, affecting only its direct rendered children. */
+export function componentContainerStyleToEditorCss(style: ComponentStyle): CSSProperties {
+  const css: CSSProperties = {};
+
+  if (style.flexDirection !== undefined) {
+    css.flexDirection = style.flexDirection;
+  }
+
+  if (style.justifyContent !== undefined) {
+    css.justifyContent = style.justifyContent;
+  }
+
+  if (style.alignItems !== undefined) {
+    css.alignItems = style.alignItems;
+  }
+
+  if (style.gap !== undefined) {
+    css.gap = style.gap;
+  }
+
+  return css;
+}
+
 function assignDimension(
   css: CSSProperties,
   property: "left" | "top" | "width" | "height",

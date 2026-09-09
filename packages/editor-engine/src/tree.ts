@@ -1,4 +1,9 @@
-import type { NodeId, ReactivelyProject } from "@reactively/project-schema";
+import type {
+  ComponentNode,
+  NodeId,
+  ReactivelyProject,
+  ScreenId,
+} from "@reactively/project-schema";
 
 /**
  * Pure tree queries over a project document.
@@ -64,4 +69,97 @@ export function getScreenRootIds(project: ReactivelyProject): Set<NodeId> {
 
 export function isScreenRoot(project: ReactivelyProject, nodeId: NodeId): boolean {
   return getScreenRootIds(project).has(nodeId);
+}
+
+/**
+ * True when the screen's complete downward tree has consistent, unique two-way links.
+ *
+ * This is intentionally hierarchy-only. Component nesting semantics remain the registry's
+ * responsibility, while mutations use this guard to avoid operating on corrupt arrays.
+ */
+export function isScreenTreeConsistent(project: ReactivelyProject, screenId: ScreenId): boolean {
+  const screen = project.screens[screenId];
+  const root = screen ? project.nodes[screen.rootNodeId] : undefined;
+  if (!screen || !root || root.parentId !== null) {
+    return false;
+  }
+
+  const visited = new Set<NodeId>();
+  const stack: NodeId[] = [root.id];
+  while (stack.length > 0) {
+    const currentId = stack.pop();
+    if (!currentId || visited.has(currentId)) {
+      return false;
+    }
+    visited.add(currentId);
+
+    const current = project.nodes[currentId];
+    if (!current || current.id !== currentId) {
+      return false;
+    }
+
+    for (const childId of current.children) {
+      const child = project.nodes[childId];
+      if (!child || child.parentId !== current.id) {
+        return false;
+      }
+    }
+
+    stack.push(...[...current.children].reverse());
+  }
+
+  return Object.values(project.nodes).every(
+    (candidate) =>
+      !candidate.parentId || !visited.has(candidate.parentId) || visited.has(candidate.id),
+  );
+}
+
+/**
+ * True when a node has a consistent, acyclic parent path to the requested screen root.
+ *
+ * Following `parentId` keeps this query cheap while checking each matching `children`
+ * reference preserves the document's two-way hierarchy invariant. A malformed cycle or
+ * cross-screen reference therefore fails closed instead of becoming an insertion target.
+ */
+export function isNodeInScreenTree(
+  project: ReactivelyProject,
+  screenId: ScreenId,
+  nodeId: NodeId,
+): boolean {
+  const screen = project.screens[screenId];
+  if (!screen) {
+    return false;
+  }
+
+  const seen = new Set<NodeId>();
+  let currentId: NodeId | null = nodeId;
+
+  while (currentId) {
+    if (seen.has(currentId)) {
+      return false;
+    }
+    seen.add(currentId);
+
+    const current: ComponentNode | undefined = project.nodes[currentId];
+    if (!current) {
+      return false;
+    }
+
+    if (current.id === screen.rootNodeId) {
+      return current.parentId === null;
+    }
+
+    if (!current.parentId) {
+      return false;
+    }
+
+    const parent: ComponentNode | undefined = project.nodes[current.parentId];
+    if (!parent?.children.includes(current.id)) {
+      return false;
+    }
+
+    currentId = parent.id;
+  }
+
+  return false;
 }

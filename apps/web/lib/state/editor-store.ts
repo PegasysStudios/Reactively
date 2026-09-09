@@ -21,8 +21,6 @@ export interface EditorStoreState {
   viewport: EditorViewport;
   activePanel: EditorPanel;
   activeInspectorPanel: InspectorPanel;
-  /** Layers-tree disclosure state. */
-  expandedNodeIds: readonly NodeId[];
   isDragging: boolean;
   /**
    * Number of open inspector dropdowns. Canvas clicks must not clear selection while
@@ -39,7 +37,6 @@ export interface EditorStoreState {
   setInspectorPanel: (panel: InspectorPanel) => void;
   setZoom: (zoom: number) => void;
   setPan: (panX: number, panY: number) => void;
-  toggleExpanded: (nodeId: NodeId) => void;
   setDragging: (isDragging: boolean) => void;
   setInspectorDropdownOpen: (open: boolean) => void;
   armCanvasClearSuppression: () => void;
@@ -56,7 +53,6 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
   viewport: DEFAULT_VIEWPORT,
   activePanel: "layers",
   activeInspectorPanel: "properties",
-  expandedNodeIds: [],
   isDragging: false,
   inspectorDropdownOpenCount: 0,
   suppressNextCanvasClear: false,
@@ -97,21 +93,11 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
 
   setPan: (panX, panY) => set((state) => ({ viewport: { ...state.viewport, panX, panY } })),
 
-  toggleExpanded: (nodeId) =>
-    set((state) => ({
-      expandedNodeIds: state.expandedNodeIds.includes(nodeId)
-        ? state.expandedNodeIds.filter((id) => id !== nodeId)
-        : [...state.expandedNodeIds, nodeId],
-    })),
-
   setDragging: (isDragging) => set({ isDragging }),
 
   setInspectorDropdownOpen: (open) =>
     set((state) => ({
-      inspectorDropdownOpenCount: Math.max(
-        0,
-        state.inspectorDropdownOpenCount + (open ? 1 : -1),
-      ),
+      inspectorDropdownOpenCount: Math.max(0, state.inspectorDropdownOpenCount + (open ? 1 : -1)),
     })),
 
   armCanvasClearSuppression: () => {
@@ -135,7 +121,6 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
       viewport: DEFAULT_VIEWPORT,
       activePanel: "layers",
       activeInspectorPanel: "properties",
-      expandedNodeIds: [],
       isDragging: false,
       inspectorDropdownOpenCount: 0,
       suppressNextCanvasClear: false,

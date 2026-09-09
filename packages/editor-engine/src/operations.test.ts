@@ -1,6 +1,7 @@
 import {
   ReactivelyProjectSchema,
   createMinimalProjectFixture,
+  type ComponentStyle,
   type ReactivelyProject,
 } from "@reactively/project-schema";
 import { createSequentialIdFactory, unwrap } from "@reactively/shared";
@@ -11,7 +12,7 @@ import {
   addNode,
   deleteNode,
   renameProject,
-  reparentNode,
+  reparentComponent,
   updateNodeProps,
   updateNodeStyle,
 } from "./operations.js";
@@ -54,6 +55,7 @@ function createTestContext(): EditorCommandContext {
     now: () => "2026-02-01T00:00:00.000Z",
     canAcceptChild: (parentType) => parentType === "View",
     canBeScreenRoot: (type) => type === "View",
+    supportsContainerLayout: (type) => type === "View",
     defaultsFor: (type) =>
       type === "View" || type === "Text" || type === "Button"
         ? { name: type, props: {}, style: {} }
@@ -71,7 +73,13 @@ describe("addNode", () => {
   });
 
   it("appends a new node to its parent", () => {
-    const next = unwrap(addNode(project, context, { parentId: "node_root", type: "Text" }));
+    const next = unwrap(
+      addNode(project, context, {
+        screenId: "screen_home",
+        parentId: "node_root",
+        type: "Text",
+      }),
+    );
 
     expect(next.nodes["node_1"]).toMatchObject({ type: "Text", parentId: "node_root" });
     expect(next.nodes["node_root"]?.children).toEqual(["node_title", "node_cta", "node_1"]);
@@ -79,42 +87,134 @@ describe("addNode", () => {
 
   it("inserts at a requested index", () => {
     const next = unwrap(
-      addNode(project, context, { parentId: "node_root", type: "Text", index: 0 }),
+      addNode(project, context, {
+        screenId: "screen_home",
+        parentId: "node_root",
+        type: "Text",
+        index: 0,
+      }),
     );
 
     expect(next.nodes["node_root"]?.children).toEqual(["node_1", "node_title", "node_cta"]);
   });
 
   it("does not mutate the original project", () => {
-    addNode(project, context, { parentId: "node_root", type: "Text" });
+    addNode(project, context, {
+      screenId: "screen_home",
+      parentId: "node_root",
+      type: "Text",
+    });
 
     expect(project.nodes["node_root"]?.children).toEqual(["node_title", "node_cta"]);
     expect(project.nodes["node_1"]).toBeUndefined();
   });
 
   it("stamps updatedAt", () => {
-    const next = unwrap(addNode(project, context, { parentId: "node_root", type: "Text" }));
+    const next = unwrap(
+      addNode(project, context, {
+        screenId: "screen_home",
+        parentId: "node_root",
+        type: "Text",
+      }),
+    );
 
     expect(next.metadata.updatedAt).toBe("2026-02-01T00:00:00.000Z");
     expect(next.metadata.createdAt).toBe(project.metadata.createdAt);
   });
 
   it("rejects an unknown component type", () => {
-    const result = addNode(project, context, { parentId: "node_root", type: "FlatList" });
+    const result = addNode(project, context, {
+      screenId: "screen_home",
+      parentId: "node_root",
+      type: "FlatList",
+    });
 
     expect(result).toMatchObject({ ok: false, error: { code: "unknown-component-type" } });
   });
 
   it("rejects a parent that cannot have children", () => {
-    const result = addNode(project, context, { parentId: "node_title", type: "Text" });
+    const result = addNode(project, context, {
+      screenId: "screen_home",
+      parentId: "node_title",
+      type: "Text",
+    });
 
     expect(result).toMatchObject({ ok: false, error: { code: "invalid-nesting" } });
   });
 
   it("rejects a parent that does not exist", () => {
-    const result = addNode(project, context, { parentId: "node_ghost", type: "Text" });
+    const result = addNode(project, context, {
+      screenId: "screen_home",
+      parentId: "node_ghost",
+      type: "Text",
+    });
 
     expect(result).toMatchObject({ ok: false, error: { code: "parent-not-found" } });
+  });
+
+  it("rejects a screen that does not exist", () => {
+    const result = addNode(project, context, {
+      screenId: "screen_ghost",
+      parentId: "node_root",
+      type: "Text",
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: "screen-not-found" } });
+  });
+
+  it("rejects a parent outside the requested screen tree", () => {
+    project.screens["screen_second"] = {
+      id: "screen_second",
+      name: "Second",
+      route: "/second",
+      rootNodeId: "node_second_root",
+      options: { safeArea: true, scrollBehavior: "none" },
+    };
+    project.nodes["node_second_root"] = {
+      id: "node_second_root",
+      type: "View",
+      name: "Second Screen Root",
+      parentId: null,
+      children: [],
+      props: {},
+      style: {},
+      events: [],
+    };
+
+    const result = addNode(project, context, {
+      screenId: "screen_home",
+      parentId: "node_second_root",
+      type: "Text",
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: "parent-outside-screen" } });
+  });
+
+  it("rejects a generated ID that already belongs to a project node", () => {
+    const result = addNode(
+      project,
+      { ...context, createId: () => "node_title" },
+      { screenId: "screen_home", parentId: "node_root", type: "Text" },
+    );
+
+    expect(result).toMatchObject({ ok: false, error: { code: "duplicate-node-id" } });
+    expect(project.nodes["node_root"]?.children).toEqual(["node_title", "node_cta"]);
+  });
+
+  it("updates both hierarchy references and preserves unrelated node identity", () => {
+    const next = unwrap(
+      addNode(project, context, {
+        screenId: "screen_home",
+        parentId: "node_root",
+        type: "View",
+      }),
+    );
+
+    expect(next.nodes["node_root"]?.children).toContain("node_1");
+    expect(next.nodes["node_1"]?.parentId).toBe("node_root");
+    expect(next.nodes["node_title"]).toBe(project.nodes["node_title"]);
+    expect(next.nodes["node_cta"]).toBe(project.nodes["node_cta"]);
+    expect(ReactivelyProjectSchema.safeParse(next).success).toBe(true);
   });
 });
 
@@ -135,8 +235,20 @@ describe("deleteNode", () => {
   });
 
   it("removes the whole subtree", () => {
-    const withGroup = unwrap(addNode(project, context, { parentId: "node_root", type: "View" }));
-    const withChild = unwrap(addNode(withGroup, context, { parentId: "node_1", type: "Text" }));
+    const withGroup = unwrap(
+      addNode(project, context, {
+        screenId: "screen_home",
+        parentId: "node_root",
+        type: "View",
+      }),
+    );
+    const withChild = unwrap(
+      addNode(withGroup, context, {
+        screenId: "screen_home",
+        parentId: "node_1",
+        type: "Text",
+      }),
+    );
 
     const next = unwrap(deleteNode(withChild, context, { nodeId: "node_1" }));
 
@@ -157,7 +269,7 @@ describe("deleteNode", () => {
   });
 });
 
-describe("reparentNode", () => {
+describe("reparentComponent", () => {
   let project: ReactivelyProject;
   let context: EditorCommandContext;
 
@@ -167,10 +279,20 @@ describe("reparentNode", () => {
   });
 
   it("moves a node into a new parent", () => {
-    const withGroup = unwrap(addNode(project, context, { parentId: "node_root", type: "View" }));
+    const withGroup = unwrap(
+      addNode(project, context, {
+        screenId: "screen_home",
+        parentId: "node_root",
+        type: "View",
+      }),
+    );
 
     const next = unwrap(
-      reparentNode(withGroup, context, { nodeId: "node_title", newParentId: "node_1" }),
+      reparentComponent(withGroup, context, {
+        screenId: "screen_home",
+        nodeId: "node_title",
+        newParentId: "node_1",
+      }),
     );
 
     expect(next.nodes["node_title"]?.parentId).toBe("node_1");
@@ -178,23 +300,37 @@ describe("reparentNode", () => {
     expect(next.nodes["node_root"]?.children).toEqual(["node_cta", "node_1"]);
   });
 
-  it("reorders within the same parent", () => {
+  it("treats the existing parent as a no-op", () => {
     const next = unwrap(
-      reparentNode(project, context, {
+      reparentComponent(project, context, {
+        screenId: "screen_home",
         nodeId: "node_cta",
         newParentId: "node_root",
-        index: 0,
       }),
     );
 
-    expect(next.nodes["node_root"]?.children).toEqual(["node_cta", "node_title"]);
+    expect(next).toBe(project);
+    expect(next.nodes["node_root"]?.children).toEqual(["node_title", "node_cta"]);
   });
 
   it("refuses to move a node into its own descendant", () => {
-    const withGroup = unwrap(addNode(project, context, { parentId: "node_root", type: "View" }));
-    const withNested = unwrap(addNode(withGroup, context, { parentId: "node_1", type: "View" }));
+    const withGroup = unwrap(
+      addNode(project, context, {
+        screenId: "screen_home",
+        parentId: "node_root",
+        type: "View",
+      }),
+    );
+    const withNested = unwrap(
+      addNode(withGroup, context, {
+        screenId: "screen_home",
+        parentId: "node_1",
+        type: "View",
+      }),
+    );
 
-    const result = reparentNode(withNested, context, {
+    const result = reparentComponent(withNested, context, {
+      screenId: "screen_home",
       nodeId: "node_1",
       newParentId: "node_2",
     });
@@ -203,7 +339,8 @@ describe("reparentNode", () => {
   });
 
   it("refuses to make a node its own parent", () => {
-    const result = reparentNode(project, context, {
+    const result = reparentComponent(project, context, {
+      screenId: "screen_home",
       nodeId: "node_title",
       newParentId: "node_title",
     });
@@ -212,9 +349,16 @@ describe("reparentNode", () => {
   });
 
   it("refuses to move a screen root", () => {
-    const withGroup = unwrap(addNode(project, context, { parentId: "node_root", type: "View" }));
+    const withGroup = unwrap(
+      addNode(project, context, {
+        screenId: "screen_home",
+        parentId: "node_root",
+        type: "View",
+      }),
+    );
 
-    const result = reparentNode(withGroup, context, {
+    const result = reparentComponent(withGroup, context, {
+      screenId: "screen_home",
       nodeId: "node_root",
       newParentId: "node_1",
     });
@@ -223,7 +367,8 @@ describe("reparentNode", () => {
   });
 
   it("refuses a semantically invalid parent", () => {
-    const result = reparentNode(project, context, {
+    const result = reparentComponent(project, context, {
+      screenId: "screen_home",
       nodeId: "node_cta",
       newParentId: "node_title",
     });
@@ -316,6 +461,126 @@ describe("updateNodeProps and updateNodeStyle", () => {
     expect(next.nodes["node_cta"]?.style.width).toEqual(project.nodes["node_cta"]?.style.width);
     expect(next.nodes["node_title"]).toBe(project.nodes["node_title"]);
     expect(ReactivelyProjectSchema.safeParse(next).success).toBe(true);
+  });
+
+  it.each([
+    ["flexDirection", { flexDirection: "row" }, "flexDirection", "row"],
+    ["justifyContent", { justifyContent: "space-between" }, "justifyContent", "space-between"],
+    ["alignItems", { alignItems: "center" }, "alignItems", "center"],
+    ["gap", { gap: 16 }, "gap", 16],
+  ] as const)("updates View %s without changing another node", (_name, style, key, value) => {
+    const next = unwrap(
+      updateNodeStyle(project, context, {
+        nodeId: "node_root",
+        style: style as ComponentStyle,
+      }),
+    );
+
+    expect(next.nodes["node_root"]?.style[key]).toBe(value);
+    expect(next.nodes["node_title"]).toBe(project.nodes["node_title"]);
+    expect(next.nodes["node_cta"]).toBe(project.nodes["node_cta"]);
+    expect(ReactivelyProjectSchema.safeParse(next).success).toBe(true);
+  });
+
+  it("updates a nested View independently of its parent and children", () => {
+    const withNestedView = unwrap(
+      addNode(project, context, {
+        screenId: "screen_home",
+        parentId: "node_root",
+        type: "View",
+      }),
+    );
+    const parentStyle = withNestedView.nodes["node_root"]?.style;
+    const titleNode = withNestedView.nodes["node_title"];
+
+    const next = unwrap(
+      updateNodeStyle(withNestedView, context, {
+        nodeId: "node_1",
+        style: { flexDirection: "row", gap: 8 },
+      }),
+    );
+
+    expect(next.nodes["node_1"]?.style).toMatchObject({ flexDirection: "row", gap: 8 });
+    expect(next.nodes["node_root"]?.style).toEqual(parentStyle);
+    expect(next.nodes["node_title"]).toBe(titleNode);
+    expect(next.nodes["node_1"]?.parentId).toBe("node_root");
+  });
+
+  it.each(["row-reverse", "column-reverse"] as const)(
+    "keeps hierarchy and child order unchanged for %s",
+    (flexDirection) => {
+      const nodeIds = Object.keys(project.nodes);
+      const childOrder = [...(project.nodes["node_root"]?.children ?? [])];
+      const childParents = childOrder.map((childId) => project.nodes[childId]?.parentId);
+
+      const next = unwrap(
+        updateNodeStyle(project, context, {
+          nodeId: "node_root",
+          style: { flexDirection },
+        }),
+      );
+
+      expect(Object.keys(next.nodes)).toEqual(nodeIds);
+      expect(next.nodes["node_root"]?.children).toEqual(childOrder);
+      expect(childOrder.map((childId) => next.nodes[childId]?.parentId)).toEqual(childParents);
+    },
+  );
+
+  it("preserves existing item, position, margin and padding styles", () => {
+    const root = project.nodes["node_root"];
+    if (!root) {
+      throw new Error("Fixture is missing its root View.");
+    }
+
+    project.nodes["node_root"] = {
+      ...root,
+      style: {
+        ...root.style,
+        position: "relative",
+        flexGrow: 1,
+        flexShrink: 0,
+        alignSelf: "center",
+        margin: { top: 4 },
+        padding: { all: 24 },
+      },
+    };
+
+    const next = unwrap(
+      updateNodeStyle(project, context, { nodeId: "node_root", style: { gap: 16 } }),
+    );
+
+    expect(next.nodes["node_root"]?.style).toMatchObject({
+      position: "relative",
+      flexGrow: 1,
+      flexShrink: 0,
+      alignSelf: "center",
+      margin: { top: 4 },
+      padding: { all: 24 },
+      gap: 16,
+    });
+  });
+
+  it.each([-1, Number.NaN])("rejects invalid gap %s before it enters project state", (gap) => {
+    const result = updateNodeStyle(project, context, {
+      nodeId: "node_root",
+      style: { gap },
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: "invalid-component-style" } });
+    expect(project.nodes["node_root"]?.style.gap).toBe(12);
+  });
+
+  it.each(["Text", "Button"])("rejects container styles on %s", (type) => {
+    const nodeId = type === "Text" ? "node_title" : "node_cta";
+    const result = updateNodeStyle(project, context, {
+      nodeId,
+      style: { flexDirection: "row" },
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "unsupported-container-layout", nodeId },
+    });
   });
 
   it("drops properties cleared with undefined instead of serializing them", () => {
